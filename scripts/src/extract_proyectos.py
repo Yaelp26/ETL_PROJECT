@@ -19,10 +19,13 @@ def extract_and_show_data():
         with source_conn.cursor() as cursor:
             
             # --- LA CONSULTA DE EXTRACCIÓN (LA "E" DE ETL) ---
+            # FILTROS: Solo proyectos Y contratos con estado 'Cancelado' o 'Cerrado'
             sql_select = """
             SELECT
                 p.ID_Proyecto,
                 p.NombreProyecto,
+                p.Estado AS EstadoProyecto,
+                c.Estado AS EstadoContrato,
                 cli.NombreCliente,
                 c.ValorTotalContrato,
                 p.CostoPresupuestado,
@@ -39,7 +42,10 @@ def extract_and_show_data():
                    WHERE pen.ID_Contrato = c.ID_Contrato) AS CostoTotalPenalizaciones
             FROM proyectos p
             LEFT JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-            LEFT JOIN clientes cli ON c.ID_Cliente = cli.ID_Cliente;
+            LEFT JOIN clientes cli ON c.ID_Cliente = cli.ID_Cliente
+            WHERE p.Estado IN ('Cancelado', 'Cerrado')
+            AND c.Estado IN ('Cerrado', 'Cancelado')
+            ORDER BY p.Estado, p.ID_Proyecto;
             """
             
             print("\nEjecutando consulta en la base de datos de origen...")
@@ -52,12 +58,12 @@ def extract_and_show_data():
                 print("No se encontraron registros con la consulta.")
                 return
 
-            print(f"✅ ¡Extracción exitosa! Se encontraron {len(registros)} registros.")
+            print(f"✅ ¡Extracción exitosa! Se encontraron {len(registros)} registros con proyectos y contratos cerrados/cancelados.")
             print("--- Mostrando los primeros 5 registros ---")
 
             # Imprimimos los encabezados para que sea más fácil de leer
-            print("\nID_Proyecto | NombreProyecto | Cliente | ValorContrato | Presupuesto | CostoHoras | CostoGastos | CostoPenalizaciones")
-            print("-" * 120)
+            print("\nID | Proyecto | EstProyecto | EstContrato | Cliente | ValorContrato | Presupuesto | CostoHoras | CostoGastos | Penalizaciones")
+            print("-" * 140)
 
             # Mostramos solo los primeros 5 para no saturar la pantalla
             for fila in registros[:5]:
