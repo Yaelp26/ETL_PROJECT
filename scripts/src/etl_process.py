@@ -5,8 +5,8 @@ from src.transformations import transformar_datos_usuarios
 
 def run_etl():
     """Función principal que orquesta el proceso ETL completo."""
-    source_conn = get_db_connection('source_db')
-    dest_conn = get_db_connection('destination_db')
+    source_conn = get_db_connection('origen')
+    dest_conn = get_db_connection('destino')
 
     if not source_conn or not dest_conn:
         print("No se pudo establecer una de las conexiones. Abortando proceso.")
