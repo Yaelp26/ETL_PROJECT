@@ -1,4 +1,44 @@
+# Archivos de configuración sensibles
 config/.env
-_pycache__/
+
+# Archivos de cache de Python
+__pycache__/
+*/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Entornos virtuales
+.venv/
+venv/
+ENV/
+env/
+
+# Archivos de log
+logs/*.log
 *.log
-temp/
+
+# Archivos temporales
+temp/*
+*.tmp
+*.temp
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Archivos de respaldo
+*.bak
+*.backup
+
+# Archivos de base de datos locales
+*.db
+*.sqlite
+*.sqlite3
