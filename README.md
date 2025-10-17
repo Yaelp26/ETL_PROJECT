@@ -3,9 +3,9 @@
 Sistema ETL inteligente y reproducible para migrar datos de gestión de proyectos de OLTP (base transaccional) a OLAP (data warehouse) usando Python y MySQL.
 
 
-##Resumen Ejecutivo
+## Resumen Ejecutivo
 
-###Características Principales
+### Características Principales
 - **ETL Inteligente**: Analiza automáticamente el estado y ejecuta solo lo necesario
 - **100% Reproducible**: Puede ejecutarse múltiples veces sin problemas
 - **Validación Automática**: Verifica integridad de datos en cada paso
@@ -21,7 +21,7 @@ Sistema ETL inteligente y reproducible para migrar datos de gestión de proyecto
 
 ##  Arquitectura del Sistema
 
-###Estructura del Proyecto
+### Estructura del Proyecto
 ```
 etl_project/
 ├── 📂 config/
