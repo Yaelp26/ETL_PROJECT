@@ -1,4 +1,4 @@
-# utils/helpers.py
+# Comprobar la conexion a las bases de datos OLTP y DW
 import mysql.connector
 from config.db_config import DB_OLTP, DB_DW
 
