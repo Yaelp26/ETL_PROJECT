@@ -110,7 +110,7 @@ DW_DB=dw_proyectos
 4. **Riesgos**: `riesgos`
 5. **Finanzas**: `gastos`, `penalizaciones`
 
-#### 💡 **Características Especiales**
+####  **Características Especiales**
 -  Joins estratégicos para optimizar transformación
 -  Cálculos pre-computados (retrasos, costos, desviaciones)
 -  Filtros aplicados en cascada a todas las tablas relacionadas
@@ -207,7 +207,7 @@ Esquema dimensional optimizado para análisis:
 - Análisis de penalizaciones
 - ROI por tipo de proyecto
 
-### **⏱ Análisis Temporal**
+### ** Análisis Temporal**
 - Cumplimiento de cronogramas
 - Identificación de cuellos de botella
 - Tendencias de productividad
@@ -237,13 +237,13 @@ Esquema dimensional optimizado para análisis:
 
 ---
 
-## 🏁 Estado del Proyecto
+##  Estado del Proyecto
 
-- ✅ **Extracción**: Implementada con reglas de negocio
-- 🚧 **Transformación**: En desarrollo
-- ⏳ **Carga**: Pendiente
-- ⏳ **Testing**: Pendiente
-- ⏳ **Documentación técnica**: Pendiente
+-  **Extracción**: Implementada con reglas de negocio
+-  **Transformación**: En desarrollo
+-  **Carga**: Pendiente
+-  **Testing**: Pendiente
+-  **Documentación técnica**: Pendiente
 
 ---
 
