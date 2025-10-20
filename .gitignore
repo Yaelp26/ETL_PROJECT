@@ -1,44 +1,15 @@
-# Archivos de configuración sensibles
-config/.env
-
-# Archivos de cache de Python
-__pycache__/
-*/__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-
-# Entornos virtuales
-.venv/
+#Entornos virtuales
 venv/
-ENV/
-env/
+.env
 
-# Archivos de log
-logs/*.log
+#Archivos temporales de Python
+__pycache__/
+*.pyc
 *.log
 
-# Archivos temporales
-temp/*
-*.tmp
-*.temp
+#Datos locales
+logs/etl_log.txt
+*.csv
 
-# Archivos del sistema
-.DS_Store
-Thumbs.db
-
-# Archivos de IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Archivos de respaldo
-*.bak
-*.backup
-
-# Archivos de base de datos locales
-*.db
-*.sqlite
-*.sqlite3
+#Configuraciones sensibles
+config/db_config.py
