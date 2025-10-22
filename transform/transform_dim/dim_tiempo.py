@@ -1,6 +1,3 @@
-"""
-Transformación dim_tiempo - Proyecto Escolar ETL
-"""
 import pandas as pd
 import logging
 from typing import Dict
@@ -109,19 +106,3 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     result = pd.DataFrame(dim_tiempo)
     log_transform_info('dim_tiempo', len(fechas_encontradas), len(result))
     return result
-
-def test_transform():
-    sample_data = {
-        'proyectos': pd.DataFrame({
-            'ID_Proyecto': [1, 2],
-            'FechaInicio': ['2023-01-15', '2023-02-01'],
-            'FechaFin': ['2023-06-15', '2023-08-01']
-        })
-    }
-    result = transform(sample_data)
-    print("Test dim_tiempo:")
-    print(result.head())
-    return result
-
-if __name__ == "__main__":
-    test_transform()

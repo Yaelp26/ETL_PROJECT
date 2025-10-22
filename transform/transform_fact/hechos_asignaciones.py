@@ -1,7 +1,3 @@
-"""
-Transformación hechos_asignaciones - Proyecto Escolar ETL
-Tabla de hechos con métricas de asignaciones de empleados a proyectos
-"""
 import pandas as pd
 import logging
 from typing import Dict
@@ -16,63 +12,65 @@ from transform.common import ensure_df, log_transform_info
 logger = logging.getLogger(__name__)
 
 def get_dependencies():
-    """Tablas origen necesarias"""
     return ['asignaciones', 'empleados', 'proyectos']
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """
-    Transformación para hechos_asignaciones
-    
-    Input: df_dict con:
-        - 'asignaciones': Asignaciones empleado-proyecto
-        - 'empleados': Datos de empleados (para CostoPorHora)
-        - 'proyectos': Datos de proyectos (para validación)
-    
-    Output: DataFrame con esquema DW:
-        - ID_Empleado: FK a dim_empleados
-        - ID_Proyecto: FK a dim_proyectos  
-        - ID_FechaAsignacion: FK a dim_tiempo (fecha como string por simplicidad)
-        - HorasPlanificadas: Horas estimadas
-        - HorasReales: Horas trabajadas realmente
-        - ValorHoras: Costo monetario (HorasReales × CostoPorHora)
-    """
     # Obtener datos de entrada
     asignaciones = ensure_df(df_dict.get('asignaciones', pd.DataFrame()))
     empleados = ensure_df(df_dict.get('empleados', pd.DataFrame()))
+    dim_tiempo = ensure_df(df_dict.get('dim_tiempo', pd.DataFrame()))
     
     if asignaciones.empty:
         logger.warning('hechos_asignaciones: No hay datos de asignaciones')
         return pd.DataFrame(columns=[
-            'ID_Empleado', 'ID_Proyecto', 'ID_FechaAsignacion', 
+            'ID_HechoAsignacion', 'ID_Empleado', 'ID_Proyecto', 'ID_FechaAsignacion', 
             'HorasPlanificadas', 'HorasReales', 'ValorHoras'
         ])
     
     # Trabajar con copia
     df = asignaciones.copy()
     
-    # Calcular ValorHoras si tenemos datos de empleados
+    # ID_HechoAsignacion: ID generado secuencial
+    df['ID_HechoAsignacion'] = range(1, len(df) + 1)
+    
+    # ID_FechaAsignacion: Mapear fecha a ID de dim_tiempo
+    if not dim_tiempo.empty:
+        # Convertir fechas a formato date para mapeo
+        df['FechaAsignacion_date'] = pd.to_datetime(df['FechaAsignacion'], errors='coerce').dt.date
+        dim_tiempo['Fecha_date'] = pd.to_datetime(dim_tiempo['Fecha'], errors='coerce').dt.date
+        
+        # Crear mapeo fecha -> ID_Tiempo
+        fecha_tiempo_map = dim_tiempo.set_index('Fecha_date')['ID_Tiempo'].to_dict()
+        df['ID_FechaAsignacion'] = df['FechaAsignacion_date'].map(fecha_tiempo_map)
+        
+        # Manejar fechas no encontradas
+        fechas_no_encontradas = df['ID_FechaAsignacion'].isna().sum()
+        if fechas_no_encontradas > 0:
+            logger.warning(f'hechos_asignaciones: {fechas_no_encontradas} fechas no encontradas en dim_tiempo')
+            df['ID_FechaAsignacion'] = df['ID_FechaAsignacion'].fillna(0).astype(int)
+    else:
+        logger.warning('hechos_asignaciones: dim_tiempo vacía, usando 0 como ID_FechaAsignacion')
+        df['ID_FechaAsignacion'] = 0
+    
+    # HorasPlanificadas y HorasReales: Extraídas directamente del SGP
+    df['HorasPlanificadas'] = pd.to_numeric(df['HorasPlanificadas'], errors='coerce').fillna(0)
+    df['HorasReales'] = pd.to_numeric(df['HorasReales'], errors='coerce').fillna(0)
+    
+    # ValorHoras: CostoPorHora × HorasReales
     if not empleados.empty and 'CostoPorHora' in empleados.columns:
         # Crear mapeo empleado -> costo por hora
         emp_cost_map = empleados.set_index('ID_Empleado')['CostoPorHora'].to_dict()
         
         # Mapear costos y calcular valor
         df['CostoPorHora'] = df['ID_Empleado'].map(emp_cost_map).fillna(0)
-        df['HorasReales_num'] = pd.to_numeric(df['HorasReales'], errors='coerce').fillna(0)
-        df['ValorHoras'] = df['HorasReales_num'] * df['CostoPorHora']
+        df['ValorHoras'] = df['HorasReales'] * df['CostoPorHora']
     else:
         df['ValorHoras'] = 0
         logger.warning('hechos_asignaciones: No se pudo calcular ValorHoras')
     
-    # Preparar fecha para ID_FechaAsignacion (simplificado)
-    df['ID_FechaAsignacion'] = df['FechaAsignacion'].astype(str)
-    
-    # Asegurar tipos numéricos
-    df['HorasPlanificadas'] = pd.to_numeric(df['HorasPlanificadas'], errors='coerce').fillna(0)
-    df['HorasReales'] = pd.to_numeric(df['HorasReales'], errors='coerce').fillna(0)
-    
     # Seleccionar columnas finales
     result = df[[
-        'ID_Empleado', 'ID_Proyecto', 'ID_FechaAsignacion',
+        'ID_HechoAsignacion', 'ID_Empleado', 'ID_Proyecto', 'ID_FechaAsignacion',
         'HorasPlanificadas', 'HorasReales', 'ValorHoras'
     ]].copy()
     
@@ -80,35 +78,3 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     log_transform_info('hechos_asignaciones', len(asignaciones), len(result))
     
     return result
-
-def test_transform():
-    """Función de prueba simple"""
-    # Datos de muestra
-    sample_data = {
-        'asignaciones': pd.DataFrame({
-            'ID_Asignacion': [1, 2, 3],
-            'ID_Empleado': [1, 2, 1],
-            'ID_Proyecto': [1, 1, 2],
-            'HorasPlanificadas': [40, 30, 50],
-            'HorasReales': [45, 28, 55],
-            'FechaAsignacion': ['2024-01-15', '2024-01-20', '2024-02-01']
-        }),
-        'empleados': pd.DataFrame({
-            'ID_Empleado': [1, 2],
-            'NombreCompleto': ['Juan Pérez', 'Ana García'],
-            'CostoPorHora': [25.0, 30.0]
-        }),
-        'proyectos': pd.DataFrame({
-            'ID_Proyecto': [1, 2],
-            'NombreProyecto': ['Proyecto A', 'Proyecto B']
-        })
-    }
-    
-    result = transform(sample_data)
-    print("Test hechos_asignaciones:")
-    print(result)
-    print(f"ValorHoras calculado: {result['ValorHoras'].sum()}")
-    return result
-
-if __name__ == "__main__":
-    test_transform()
