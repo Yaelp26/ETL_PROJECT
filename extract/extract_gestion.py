@@ -1,11 +1,12 @@
 """
 Módulo de extracción de datos del Sistema de Gestión de Proyectos (SGP)
-Extrae datos siguiendo el orden de dependencias de las tablas
 
-REGLA DE NEGOCIO CRÍTICA:
-- SOLO se extraen datos de proyectos con Estado = 'Terminado' OR 'Cancelado'
-- O de contratos con Estado = 'Terminado' OR 'Cancelado'
-- Esta regla se aplica en cascada a todas las tablas relacionadas
+REGLAS DE NEGOCIO:
+1. SOLO se extraen datos de proyectos con Estado = 'Terminado' OR 'Cancelado'
+2. O de contratos con Estado = 'Terminado' OR 'Cancelado'  
+3. CARGA INCREMENTAL: Solo registros nuevos desde última extracción
+
+NOTA: Para hacer una carga completa, usar reset_incremental=True
 """
 
 import mysql.connector
@@ -21,6 +22,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.db_config import DB_OLTP
 from utils.helpers import get_connection
+from utils.incremental_control import IncrementalControl
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,9 +31,11 @@ logger = logging.getLogger(__name__)
 class SGPExtractor:
     """Clase para extraer datos del Sistema de Gestión de Proyectos"""
     
-    def __init__(self):
+    def __init__(self, incremental: bool = True):
         self.connection = None
         self.extraction_timestamp = datetime.now()
+        self.incremental = incremental
+        self.control = IncrementalControl() if incremental else None
         
     def connect(self):
         """Establecer conexión con la base de datos SGP"""
@@ -53,11 +57,21 @@ class SGPExtractor:
         """Ejecutar consulta y retornar DataFrame"""
         try:
             df = pd.read_sql(query, self.connection)
-            logger.info(f"Extraídos {len(df)} registros de {table_name}")
+            mode = "INCREMENTAL" if self.incremental else "COMPLETA"
+            logger.info(f"Extraídos {len(df)} registros de {table_name} [MODO: {mode}]")
             return df
         except Exception as e:
             logger.error(f"Error extrayendo datos de {table_name}: {str(e)}")
             return pd.DataFrame()
+    
+    def get_incremental_filter(self) -> str:
+        """Obtener filtro para carga incremental"""
+        if not self.incremental or not self.control:
+            return ""
+        
+        last_date = self.control.get_last_extraction_date()
+        # Buscar registros modificados después de la última extracción
+        return f"AND (fecha_modificacion > '{last_date}' OR fecha_creacion > '{last_date}')"
 
     # ================= TABLAS MAESTRO =================
     
@@ -115,8 +129,11 @@ class SGPExtractor:
         Extraer datos de proyectos - REGLA DE NEGOCIO:
         - Proyecto terminado/cancelado: Se incluye
         - Contrato terminado/cancelado: Se incluyen todos sus proyectos
+        - Carga incremental: Solo modificados desde última extracción
         """
-        query = """
+        incremental_filter = self.get_incremental_filter()
+        
+        query = f"""
         SELECT 
             p.ID_Proyecto,
             p.ID_Contrato,
@@ -133,11 +150,16 @@ class SGPExtractor:
                 WHEN c.Estado IN ('Terminado', 'Cancelado') THEN 'Por contrato'
                 ELSE 'No aplica'
             END as razon_inclusion,
-            CURRENT_TIMESTAMP as fecha_extraccion
+            CURRENT_TIMESTAMP as fecha_extraccion,
+            GREATEST(
+                IFNULL(p.fecha_modificacion, p.fecha_creacion),
+                IFNULL(c.fecha_modificacion, c.fecha_creacion)
+            ) as ultima_modificacion
         FROM proyectos p
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
         WHERE (p.Estado IN ('Terminado', 'Cancelado') 
                OR c.Estado IN ('Terminado', 'Cancelado'))
+        {incremental_filter}
         ORDER BY p.ID_Proyecto
         """
         return self.execute_query(query, "proyectos")
@@ -335,7 +357,12 @@ class SGPExtractor:
         extracted_data = {}
         
         try:
-            logger.info("=== INICIANDO EXTRACCIÓN DE DATOS SGP ===")
+            mode_msg = "INCREMENTAL" if self.incremental else "COMPLETA"
+            if self.incremental and self.control:
+                last_date = self.control.get_last_extraction_date()
+                logger.info(f"=== EXTRACCIÓN {mode_msg} - Desde: {last_date} ===")
+            else:
+                logger.info(f"=== EXTRACCIÓN {mode_msg} ===")
             
             # 1. Tablas Maestro
             logger.info("--- Extrayendo Tablas Maestro ---")
@@ -372,6 +399,11 @@ class SGPExtractor:
             
             for table_name, df in extracted_data.items():
                 logger.info(f"  - {table_name}: {len(df)} registros")
+            
+            # Actualizar fecha de control si hay datos nuevos
+            if self.incremental and self.control and total_records > 0:
+                self.control.update_last_extraction_date()
+                logger.info("✅ Fecha de control incremental actualizada")
                 
         except Exception as e:
             logger.error(f"Error durante la extracción: {str(e)}")
@@ -381,10 +413,28 @@ class SGPExtractor:
         return extracted_data
 
 
-def extract_all() -> Dict[str, pd.DataFrame]:
-    """Función principal para extraer todos los datos"""
-    extractor = SGPExtractor()
+def extract_all(incremental: bool = True) -> Dict[str, pd.DataFrame]:
+    """
+    Función principal para extraer todos los datos
+    
+    Args:
+        incremental: Si True, solo extrae registros nuevos/modificados
+                    Si False, extrae todos los datos (carga completa)
+    """
+    extractor = SGPExtractor(incremental=incremental)
     return extractor.extract_all()
+
+def reset_incremental_control():
+    """Resetear control incremental para forzar carga completa"""
+    from utils.incremental_control import IncrementalControl
+    control = IncrementalControl()
+    control.reset_control()
+
+def get_last_extraction_info():
+    """Obtener información de la última extracción"""
+    from utils.incremental_control import IncrementalControl
+    control = IncrementalControl()
+    return control.get_last_extraction_date()
 
 
 if __name__ == "__main__":

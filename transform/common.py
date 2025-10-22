@@ -10,3 +10,7 @@ def ensure_df(df: pd.DataFrame) -> pd.DataFrame:
 
 def empty_df_with_columns(columns):
     return pd.DataFrame(columns=columns)
+
+def log_transform_info(table_name: str, input_rows: int, output_rows: int):
+    """Log simple para transformaciones"""
+    logger.info(f"{table_name}: {input_rows} → {output_rows} registros procesados")

@@ -1,24 +1,99 @@
+"""
+Transformación dim_finanzas - Proyecto Escolar ETL
+Combina gastos y penalizaciones en una dimensión financiera unificada
+"""
 import pandas as pd
 import logging
 from typing import Dict
+import sys
+import os
+
+# Agregar path para imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
+from transform.common import ensure_df, log_transform_info
 
 logger = logging.getLogger(__name__)
 
 def get_dependencies():
-    return ['gastos','penalizaciones']
+    return ['gastos', 'penalizaciones']
 
-def transform(df_dict: Dict[str,pd.DataFrame]) -> pd.DataFrame:
-    """Transformación para dim_finanzas
-    Output columns sugeridas: ['ID_Finanza','TipoGasto','Categoria','Monto']
+def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
-    gastos = df_dict.get('gastos', pd.DataFrame())
-    penal = df_dict.get('penalizaciones', pd.DataFrame())
+    Transformación para dim_finanzas
+    
+    Combina:
+    - Tabla gastos: TipoGasto, Categoria, Monto
+    - Tabla penalizaciones: se agrega como TipoGasto='Penalizaciones' con su monto
+    
+    Output: ['ID_Finanza', 'TipoGasto', 'Categoria', 'Monto']
+    """
+    gastos = ensure_df(df_dict.get('gastos', pd.DataFrame()))
+    penalizaciones = ensure_df(df_dict.get('penalizaciones', pd.DataFrame()))
+    
+    finanzas_data = []
+    
+    # Procesar gastos regulares
+    if not gastos.empty:
+        for _, row in gastos.iterrows():
+            finanzas_data.append({
+                'TipoGasto': row.get('TipoGasto', 'No especificado'),
+                'Categoria': row.get('Categoria', 'No especificado'),
+                'Monto': float(row.get('Monto', 0))
+            })
+    
+    # Procesar penalizaciones como tipo de gasto especial
+    if not penalizaciones.empty:
+        for _, row in penalizaciones.iterrows():
+            finanzas_data.append({
+                'TipoGasto': 'Penalizaciones',
+                'Categoria': 'OPEX',  # Las penalizaciones son gastos operativos
+                'Monto': float(row.get('Monto', 0))
+            })
+    
+    # Crear DataFrame resultado
+    if not finanzas_data:
+        logger.warning('dim_finanzas: No hay datos financieros para procesar')
+        return pd.DataFrame(columns=['ID_Finanza', 'TipoGasto', 'Categoria', 'Monto'])
+    
+    result = pd.DataFrame(finanzas_data)
+    
+    # Agregar ID secuencial
+    result.insert(0, 'ID_Finanza', range(1, len(result) + 1))
+    
+    # Limpiar datos
+    result['TipoGasto'] = result['TipoGasto'].astype(str).str.strip()
+    result['Categoria'] = result['Categoria'].astype(str).str.strip()
+    result['Monto'] = pd.to_numeric(result['Monto'], errors='coerce').fillna(0)
+    
+    # Log del resultado
+    total_input = len(gastos) + len(penalizaciones)
+    log_transform_info('dim_finanzas', total_input, len(result))
+    
+    return result
 
-    # Combinar tipos para la dimensión
-    df_g = gastos.copy() if not gastos.empty else pd.DataFrame(columns=['TipoGasto','Categoria','Monto'])
-    df_p = penal.copy() if not penal.empty else pd.DataFrame(columns=['Monto'])
+def test_transform():
+    """Función de prueba simple"""
+    sample_data = {
+        'gastos': pd.DataFrame({
+            'ID_Gasto': [1, 2, 3],
+            'TipoGasto': ['Materiales', 'Salarios', 'Equipos'],
+            'Categoria': ['CAPEX', 'OPEX', 'CAPEX'],
+            'Monto': [15000.0, 25000.0, 8000.0]
+        }),
+        'penalizaciones': pd.DataFrame({
+            'ID_Penalizacion': [1, 2],
+            'Monto': [5000.0, 3000.0],
+            'Motivo': ['Retraso entrega', 'Calidad deficiente']
+        })
+    }
+    
+    result = transform(sample_data)
+    print("Test dim_finanzas:")
+    print(result)
+    print(f"\nTipos de gasto únicos: {result['TipoGasto'].unique()}")
+    print(f"Total monto: ${result['Monto'].sum():,.2f}")
+    return result
 
-    # Esqueleto simple
-    cols = ['ID_Finanza','TipoGasto','Categoria','Monto']
-    logger.info('dim_finanzas: esqueleto creado')
-    return pd.DataFrame(columns=cols)
+if __name__ == "__main__":
+    test_transform()
