@@ -1,6 +1,3 @@
-"""
-Transformación dim_pruebas - Proyecto Escolar ETL
-"""
 import pandas as pd
 import logging
 from typing import Dict
@@ -18,8 +15,8 @@ def get_dependencies():
     return ['pruebas', 'hitos']
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Transformación para dim_pruebas"""
     pruebas = ensure_df(df_dict.get('pruebas', pd.DataFrame()))
+    hitos = ensure_df(df_dict.get('hitos', pd.DataFrame()))
     
     if pruebas.empty:
         logger.warning('dim_pruebas: No hay datos de pruebas')
@@ -34,24 +31,21 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     # Limpiar tipo de prueba
     df['TipoPrueba'] = df['TipoPrueba'].astype(str).str.strip()
 
+    # ===== VALIDACIÓN FK: ID_Hito → dim_hitos =====
+    if not hitos.empty:
+        valid_hitos = set(hitos['ID_Hito'].unique())
+        initial_count = len(df)
+        
+        # Filtrar pruebas con hitos válidos
+        df = df[df['ID_Hito'].isin(valid_hitos)]
+        
+        filtered_count = initial_count - len(df)
+        if filtered_count > 0:
+            logger.info(f'dim_pruebas: Filtradas {filtered_count} pruebas con hitos inexistentes')
+    else:
+        logger.warning('dim_pruebas: No hay datos de hitos para validar FK')
+
     result = df[['ID_Prueba','CodigoPrueba','ID_Hito','TipoPrueba','PruebaExitosa']]
     
     log_transform_info('dim_pruebas', len(pruebas), len(result))
     return result
-
-def test_transform():
-    sample_data = {
-        'pruebas': pd.DataFrame({
-            'ID_Prueba': [1, 2, 3, 4],
-            'ID_Hito': [1, 1, 2, 2],
-            'TipoPrueba': ['Unitaria', 'Integración', 'Aceptación', 'Unitaria'],
-            'Exitosa': [1, 1, 0, 1]
-        })
-    }
-    result = transform(sample_data)
-    print("Test dim_pruebas:")
-    print(result)
-    return result
-
-if __name__ == "__main__":
-    test_transform()
