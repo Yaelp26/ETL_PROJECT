@@ -1,10 +1,15 @@
 {
-  "last_extraction": "2025-10-21 21:41:15",
+  "last_extraction": "2025-10-21 21:59:49",
   "extractions_history": [
     {
       "previous_date": "1900-01-01 00:00:00",
       "new_date": "2025-10-21 21:41:15",
       "updated_at": "2025-10-21 21:41:15"
+    },
+    {
+      "previous_date": "2025-10-21 21:41:15",
+      "new_date": "2025-10-21 21:59:49",
+      "updated_at": "2025-10-21 21:59:49"
     }
   ]
 }
