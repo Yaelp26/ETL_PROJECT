@@ -16,16 +16,6 @@ def get_dependencies():
     return ['clientes', 'contratos']
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """
-    Transformación para dim_clientes
-    
-    Input: df_dict con:
-        - 'clientes': DataFrame de clientes del SGP
-    
-    Output: DataFrame con esquema DW:
-        - ID_Cliente: PK temporal para el DW  
-        - CodigoClienteReal: ID original del SGP
-    """
     # Obtener datos de entrada
     clientes = ensure_df(df_dict.get('clientes', pd.DataFrame()))
     
