@@ -1,7 +1,3 @@
-"""
-Transformación dim_finanzas - Proyecto Escolar ETL
-Combina gastos y penalizaciones en una dimensión financiera unificada
-"""
 import pandas as pd
 import logging
 from typing import Dict
@@ -20,13 +16,9 @@ def get_dependencies():
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     """
-    Transformación para dim_finanzas
-    
     Combina:
     - Tabla gastos: TipoGasto, Categoria, Monto
     - Tabla penalizaciones: se agrega como TipoGasto='Penalizaciones' con su monto
-    
-    Output: ['ID_Finanza', 'TipoGasto', 'Categoria', 'Monto']
     """
     gastos = ensure_df(df_dict.get('gastos', pd.DataFrame()))
     penalizaciones = ensure_df(df_dict.get('penalizaciones', pd.DataFrame()))
@@ -71,29 +63,3 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     log_transform_info('dim_finanzas', total_input, len(result))
     
     return result
-
-def test_transform():
-    """Función de prueba simple"""
-    sample_data = {
-        'gastos': pd.DataFrame({
-            'ID_Gasto': [1, 2, 3],
-            'TipoGasto': ['Materiales', 'Salarios', 'Equipos'],
-            'Categoria': ['CAPEX', 'OPEX', 'CAPEX'],
-            'Monto': [15000.0, 25000.0, 8000.0]
-        }),
-        'penalizaciones': pd.DataFrame({
-            'ID_Penalizacion': [1, 2],
-            'Monto': [5000.0, 3000.0],
-            'Motivo': ['Retraso entrega', 'Calidad deficiente']
-        })
-    }
-    
-    result = transform(sample_data)
-    print("Test dim_finanzas:")
-    print(result)
-    print(f"\nTipos de gasto únicos: {result['TipoGasto'].unique()}")
-    print(f"Total monto: ${result['Monto'].sum():,.2f}")
-    return result
-
-if __name__ == "__main__":
-    test_transform()
