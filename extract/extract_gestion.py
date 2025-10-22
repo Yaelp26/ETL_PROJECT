@@ -1,12 +1,10 @@
 """
-Módulo de extracción de datos del Sistema de Gestión de Proyectos (SGP)
+Módulo de extracción desde el Sistema de Gestión de Proyectos (SGP)
 
 REGLAS DE NEGOCIO:
-1. SOLO se extraen datos de proyectos con Estado = 'Terminado' OR 'Cancelado'
-2. O de contratos con Estado = 'Terminado' OR 'Cancelado'  
+1. SOLO se extraen datos de proyectos con Estado = 'Cerrado' OR 'Cancelado'
+2. O de contratos con Estado = 'Cerrado' OR 'Cancelado'  
 3. CARGA INCREMENTAL: Solo registros nuevos desde última extracción
-
-NOTA: Para hacer una carga completa, usar reset_incremental=True
 """
 
 import mysql.connector
@@ -38,7 +36,6 @@ class SGPExtractor:
         self.control = IncrementalControl() if incremental else None
         
     def connect(self):
-        """Establecer conexión con la base de datos SGP"""
         try:
             self.connection = get_connection("OLTP")
             logger.info("Conexión establecida con SGP exitosamente")
@@ -48,13 +45,11 @@ class SGPExtractor:
             return False
     
     def disconnect(self):
-        """Cerrar conexión con la base de datos"""
         if self.connection and self.connection.is_connected():
             self.connection.close()
             logger.info("Conexión cerrada exitosamente")
     
     def execute_query(self, query: str, table_name: str) -> pd.DataFrame:
-        """Ejecutar consulta y retornar DataFrame"""
         try:
             df = pd.read_sql(query, self.connection)
             mode = "INCREMENTAL" if self.incremental else "COMPLETA"
@@ -65,7 +60,6 @@ class SGPExtractor:
             return pd.DataFrame()
     
     def get_incremental_filter(self) -> str:
-        """Obtener filtro para carga incremental"""
         if not self.incremental or not self.control:
             return ""
         
@@ -73,10 +67,9 @@ class SGPExtractor:
         # Buscar registros modificados después de la última extracción
         return f"AND (fecha_modificacion > '{last_date}' OR fecha_creacion > '{last_date}')"
 
-    # ================= TABLAS MAESTRO =================
+    # ================= TABLAS =================
     
     def extract_clientes(self) -> pd.DataFrame:
-        """Extraer datos de clientes - SOLO clientes con contratos terminados o cancelados"""
         query = """
         SELECT DISTINCT
             cl.ID_Cliente,
@@ -84,13 +77,12 @@ class SGPExtractor:
             CURRENT_TIMESTAMP as fecha_extraccion
         FROM clientes cl
         INNER JOIN contratos c ON cl.ID_Cliente = c.ID_Cliente
-        WHERE c.Estado IN ('Terminado', 'Cancelado')
+        WHERE c.Estado IN ('Cerrado', 'Cancelado')
         ORDER BY cl.ID_Cliente
         """
         return self.execute_query(query, "clientes")
     
     def extract_empleados(self) -> pd.DataFrame:
-        """Extraer datos de empleados - SOLO empleados asignados a proyectos terminados o cancelados"""
         query = """
         SELECT DISTINCT
             e.ID_Empleado,
@@ -103,14 +95,13 @@ class SGPExtractor:
         INNER JOIN asignaciones a ON e.ID_Empleado = a.ID_Empleado
         INNER JOIN proyectos p ON a.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY e.ID_Empleado
         """
         return self.execute_query(query, "empleados")
     
     def extract_contratos(self) -> pd.DataFrame:
-        """Extraer datos de contratos - SOLO contratos terminados o cancelados"""
         query = """
         SELECT 
             ID_Contrato,
@@ -119,18 +110,12 @@ class SGPExtractor:
             Estado,
             CURRENT_TIMESTAMP as fecha_extraccion
         FROM contratos
-        WHERE Estado IN ('Terminado', 'Cancelado')
+        WHERE Estado IN ('Cerrado', 'Cancelado')
         ORDER BY ID_Contrato
         """
         return self.execute_query(query, "contratos")
     
     def extract_proyectos(self) -> pd.DataFrame:
-        """
-        Extraer datos de proyectos - REGLA DE NEGOCIO:
-        - Proyecto terminado/cancelado: Se incluye
-        - Contrato terminado/cancelado: Se incluyen todos sus proyectos
-        - Carga incremental: Solo modificados desde última extracción
-        """
         incremental_filter = self.get_incremental_filter()
         
         query = f"""
@@ -146,8 +131,8 @@ class SGPExtractor:
             c.ValorTotalContrato,
             c.Estado as EstadoContrato,
             CASE 
-                WHEN p.Estado IN ('Terminado', 'Cancelado') THEN 'Por proyecto'
-                WHEN c.Estado IN ('Terminado', 'Cancelado') THEN 'Por contrato'
+                WHEN p.Estado IN ('Cerrado', 'Cancelado') THEN 'Por proyecto'
+                WHEN c.Estado IN ('Cerrado', 'Cancelado') THEN 'Por contrato'
                 ELSE 'No aplica'
             END as razon_inclusion,
             CURRENT_TIMESTAMP as fecha_extraccion,
@@ -157,17 +142,14 @@ class SGPExtractor:
             ) as ultima_modificacion
         FROM proyectos p
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         {incremental_filter}
         ORDER BY p.ID_Proyecto
         """
         return self.execute_query(query, "proyectos")
-
-    # ================= PLANIFICACIÓN Y EJECUCIÓN =================
     
     def extract_hitos(self) -> pd.DataFrame:
-        """Extraer datos de hitos - SOLO de proyectos/contratos terminados o cancelados"""
         query = """
         SELECT 
             h.ID_Hito,
@@ -182,14 +164,13 @@ class SGPExtractor:
         FROM hitos h
         INNER JOIN proyectos p ON h.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY h.ID_Proyecto, h.ID_Hito
         """
         return self.execute_query(query, "hitos")
     
     def extract_tareas(self) -> pd.DataFrame:
-        """Extraer datos de tareas - SOLO de proyectos/contratos terminados o cancelados"""
         query = """
         SELECT 
             t.ID_Tarea,
@@ -206,14 +187,13 @@ class SGPExtractor:
         INNER JOIN hitos h ON t.ID_Hito = h.ID_Hito
         INNER JOIN proyectos p ON h.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY h.ID_Proyecto, t.ID_Hito, t.ID_Tarea
         """
         return self.execute_query(query, "tareas")
     
     def extract_asignaciones(self) -> pd.DataFrame:
-        """Extraer datos de asignaciones - SOLO de proyectos/contratos terminados o cancelados"""
         query = """
         SELECT 
             a.ID_Asignacion,
@@ -230,16 +210,13 @@ class SGPExtractor:
         INNER JOIN empleados e ON a.ID_Empleado = e.ID_Empleado
         INNER JOIN proyectos p ON a.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY a.ID_Proyecto, a.FechaAsignacion
         """
         return self.execute_query(query, "asignaciones")
-
-    # ================= CALIDAD Y CONTROL =================
     
     def extract_pruebas(self) -> pd.DataFrame:
-        """Extraer datos de pruebas - SOLO de proyectos/contratos terminados o cancelados"""
         query = """
         SELECT 
             pr.ID_Prueba,
@@ -253,14 +230,13 @@ class SGPExtractor:
         INNER JOIN hitos h ON pr.ID_Hito = h.ID_Hito
         INNER JOIN proyectos p ON h.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY h.ID_Proyecto, pr.ID_Hito, pr.Fecha
         """
         return self.execute_query(query, "pruebas")
     
     def extract_errores(self) -> pd.DataFrame:
-        """Extraer datos de errores - SOLO de proyectos/contratos terminados o cancelados"""
         query = """
         SELECT 
             e.ID_Error,
@@ -276,16 +252,13 @@ class SGPExtractor:
         INNER JOIN hitos h ON t.ID_Hito = h.ID_Hito
         INNER JOIN proyectos p ON h.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY h.ID_Proyecto, e.Fecha
         """
         return self.execute_query(query, "errores")
-
-    # ================= RIESGOS =================
     
     def extract_riesgos(self) -> pd.DataFrame:
-        """Extraer datos de riesgos - SOLO de proyectos/contratos terminados o cancelados"""
         query = """
         SELECT 
             r.ID_Riesgo,
@@ -298,16 +271,13 @@ class SGPExtractor:
         FROM riesgos r
         INNER JOIN proyectos p ON r.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY r.ID_Proyecto, r.FechaRegistro
         """
         return self.execute_query(query, "riesgos")
-
-    # ================= FINANZAS =================
     
     def extract_gastos(self) -> pd.DataFrame:
-        """Extraer datos de gastos - SOLO de proyectos/contratos terminados o cancelados"""
         query = """
         SELECT 
             g.ID_Gasto,
@@ -320,14 +290,13 @@ class SGPExtractor:
         FROM gastos g
         INNER JOIN proyectos p ON g.ID_Proyecto = p.ID_Proyecto
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE (p.Estado IN ('Terminado', 'Cancelado') 
-               OR c.Estado IN ('Terminado', 'Cancelado'))
+        WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
+               OR c.Estado IN ('Cerrado', 'Cancelado'))
         ORDER BY g.ID_Proyecto, g.Fecha
         """
         return self.execute_query(query, "gastos")
     
     def extract_penalizaciones(self) -> pd.DataFrame:
-        """Extraer datos de penalizaciones - SOLO de contratos terminados o cancelados"""
         query = """
         SELECT 
             p.ID_Penalizacion,
@@ -339,7 +308,7 @@ class SGPExtractor:
             CURRENT_TIMESTAMP as fecha_extraccion
         FROM penalizaciones p
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
-        WHERE c.Estado IN ('Terminado', 'Cancelado')
+        WHERE c.Estado IN ('Cerrado', 'Cancelado')
         ORDER BY p.ID_Contrato, p.Fecha
         """
         return self.execute_query(query, "penalizaciones")
@@ -364,30 +333,18 @@ class SGPExtractor:
             else:
                 logger.info(f"=== EXTRACCIÓN {mode_msg} ===")
             
-            # 1. Tablas Maestro
-            logger.info("--- Extrayendo Tablas Maestro ---")
+            # 1. Tablas
+            logger.info("--- Extrayendo Tablas ---")
             extracted_data['clientes'] = self.extract_clientes()
             extracted_data['empleados'] = self.extract_empleados()
             extracted_data['contratos'] = self.extract_contratos()
             extracted_data['proyectos'] = self.extract_proyectos()
-            
-            # 2. Planificación y Ejecución
-            logger.info("--- Extrayendo Planificación y Ejecución ---")
             extracted_data['hitos'] = self.extract_hitos()
             extracted_data['tareas'] = self.extract_tareas()
             extracted_data['asignaciones'] = self.extract_asignaciones()
-            
-            # 3. Calidad y Control
-            logger.info("--- Extrayendo Calidad y Control ---")
             extracted_data['pruebas'] = self.extract_pruebas()
             extracted_data['errores'] = self.extract_errores()
-            
-            # 4. Riesgos
-            logger.info("--- Extrayendo Riesgos ---")
             extracted_data['riesgos'] = self.extract_riesgos()
-            
-            # 5. Finanzas
-            logger.info("--- Extrayendo Finanzas ---")
             extracted_data['gastos'] = self.extract_gastos()
             extracted_data['penalizaciones'] = self.extract_penalizaciones()
             
@@ -403,7 +360,7 @@ class SGPExtractor:
             # Actualizar fecha de control si hay datos nuevos
             if self.incremental and self.control and total_records > 0:
                 self.control.update_last_extraction_date()
-                logger.info("✅ Fecha de control incremental actualizada")
+                logger.info("Fecha de control incremental actualizada")
                 
         except Exception as e:
             logger.error(f"Error durante la extracción: {str(e)}")
@@ -418,20 +375,18 @@ def extract_all(incremental: bool = True) -> Dict[str, pd.DataFrame]:
     Función principal para extraer todos los datos
     
     Args:
-        incremental: Si True, solo extrae registros nuevos/modificados
-                    Si False, extrae todos los datos (carga completa)
+        incremental: True, solo extrae registros nuevos
+                    False, carga completa
     """
     extractor = SGPExtractor(incremental=incremental)
     return extractor.extract_all()
 
 def reset_incremental_control():
-    """Resetear control incremental para forzar carga completa"""
     from utils.incremental_control import IncrementalControl
     control = IncrementalControl()
     control.reset_control()
 
 def get_last_extraction_info():
-    """Obtener información de la última extracción"""
     from utils.incremental_control import IncrementalControl
     control = IncrementalControl()
     return control.get_last_extraction_date()
