@@ -61,12 +61,12 @@ class SGPExtractor:
             return pd.DataFrame()
     
     def get_incremental_filter(self) -> str:
-        if not self.incremental or not self.control:
-            return ""
-        
-        last_date = self.control.get_last_extraction_date()
-        # Buscar registros modificados después de la última extracción
-        return f"AND (fecha_modificacion > '{last_date}' OR fecha_creacion > '{last_date}')"
+        """
+        Obtener filtro para carga incremental
+        PROYECTO ESCOLAR: Siempre hacer carga completa para simplicidad
+        """
+        # Para proyecto escolar: siempre extraer todo (sin filtro incremental)
+        return ""
 
     # ================= TABLAS =================
     
