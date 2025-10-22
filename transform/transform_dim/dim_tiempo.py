@@ -13,7 +13,7 @@ from transform.common import ensure_df, log_transform_info
 logger = logging.getLogger(__name__)
 
 def get_dependencies():
-    return ['proyectos', 'hitos', 'asignaciones', 'gastos']
+    return ['proyectos', 'hitos', 'asignaciones', 'gastos', 'penalizaciones']
 
 def create_subdimensions():
     """Crear subdimensiones de tiempo"""
@@ -59,14 +59,24 @@ def extract_dates_from_data(df_dict: Dict[str, pd.DataFrame]) -> list:
     if not asignaciones.empty and 'FechaAsignacion' in asignaciones.columns:
         fechas.update(asignaciones['FechaAsignacion'].dropna().tolist())
     
-    # Filtrar fechas válidas
+    # Gastos
+    gastos = df_dict.get('gastos', pd.DataFrame())
+    if not gastos.empty and 'Fecha' in gastos.columns:
+        fechas.update(gastos['Fecha'].dropna().tolist())
+    
+    # Penalizaciones  
+    penalizaciones = df_dict.get('penalizaciones', pd.DataFrame())
+    if not penalizaciones.empty and 'Fecha' in penalizaciones.columns:
+        fechas.update(penalizaciones['Fecha'].dropna().tolist())
+    
+    # Filtrar fechas válidas y convertir
     fechas_validas = []
     for fecha in fechas:
         try:
             if isinstance(fecha, str):
                 fecha_dt = pd.to_datetime(fecha)
             else:
-                fecha_dt = fecha
+                fecha_dt = pd.to_datetime(fecha)
             fechas_validas.append(fecha_dt.date())
         except:
             continue
@@ -80,25 +90,52 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     
     if not fechas_encontradas:
         logger.warning('dim_tiempo: No se encontraron fechas en los datos')
-        # Crear rango básico por defecto
-        start_date = datetime(2020, 1, 1).date()
-        end_date = datetime(2024, 12, 31).date()
+        # Crear rango desde 2019 hasta actualidad para cubrir todo el SGP
+        start_date = datetime(2019, 1, 1).date()
+        end_date = datetime(2025, 12, 31).date()
         fechas_rango = []
         current_date = start_date
         while current_date <= end_date:
             fechas_rango.append(current_date)
             current_date += timedelta(days=1)
-        fechas_encontradas = fechas_rango[:100]  # Limitar para proyecto escolar
+        fechas_encontradas = fechas_rango
+    else:
+        # Si encontramos fechas, expandir el rango para asegurar cobertura completa
+        min_fecha = min(fechas_encontradas)
+        max_fecha = max(fechas_encontradas)
+        
+        # Expandir hacia atrás hasta 2019 si es necesario
+        start_expand = datetime(2019, 1, 1).date()
+        if min_fecha > start_expand:
+            min_fecha = start_expand
+            
+        # Expandir hacia adelante hasta 2025 si es necesario  
+        end_expand = datetime(2025, 12, 31).date()
+        if max_fecha < end_expand:
+            max_fecha = end_expand
+        
+        # Generar rango completo de fechas
+        fechas_completas = []
+        current_date = min_fecha
+        while current_date <= max_fecha:
+            fechas_completas.append(current_date)
+            current_date += timedelta(days=1)
+        fechas_encontradas = sorted(fechas_completas)
+    
+    logger.info(f'dim_tiempo: Generando {len(fechas_encontradas)} fechas desde {fechas_encontradas[0]} hasta {fechas_encontradas[-1]}')
     
     # Crear dimensión tiempo
     dim_tiempo = []
     for i, fecha in enumerate(fechas_encontradas, 1):
+        # Mapear años correctamente (2019=1, 2020=2, etc.)
+        year_id = fecha.year - 2018  # 2019->1, 2020->2, 2021->3...
+        
         dim_tiempo.append({
             'ID_Tiempo': i,
             'Fecha': fecha,
             'ID_DiaSemana': fecha.weekday() + 1,  # 1=Lunes, 7=Domingo
             'ID_Mes': fecha.month,
-            'ID_Anio': min(5, fecha.year - 2019)  # Mapear años a 1-5
+            'ID_Anio': year_id
         })
     
     result = pd.DataFrame(dim_tiempo)

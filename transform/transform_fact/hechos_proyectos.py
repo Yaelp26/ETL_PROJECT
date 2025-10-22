@@ -12,15 +12,16 @@ from transform.common import ensure_df, log_transform_info
 logger = logging.getLogger(__name__)
 
 def get_dependencies():
-    return ['proyectos', 'contratos', 'errores', 'asignaciones', 'hitos', 'tareas', 'dim_tiempo', 'dim_riesgos', 'dim_finanzas', 'dim_proyectos']
+    return ['proyectos', 'contratos', 'errores', 'asignaciones', 'hitos', 'tareas', 'gastos', 'penalizaciones', 'riesgos', 'dim_tiempo', 'dim_proyectos']
 
 def calculate_project_metrics(proyecto_id: int, df_dict: Dict[str, pd.DataFrame]) -> Dict: 
     # Obtener datos principales
     proyectos = df_dict.get('proyectos', pd.DataFrame())
     contratos = df_dict.get('contratos', pd.DataFrame())
+    gastos = df_dict.get('gastos', pd.DataFrame())
+    penalizaciones = df_dict.get('penalizaciones', pd.DataFrame())
+    riesgos = df_dict.get('riesgos', pd.DataFrame())
     dim_tiempo = df_dict.get('dim_tiempo', pd.DataFrame())
-    dim_riesgos = df_dict.get('dim_riesgos', pd.DataFrame())
-    dim_finanzas = df_dict.get('dim_finanzas', pd.DataFrame())
     
     proyecto_data = proyectos[proyectos['ID_Proyecto'] == proyecto_id]
     
@@ -58,6 +59,22 @@ def calculate_project_metrics(proyecto_id: int, df_dict: Dict[str, pd.DataFrame]
         if pd.notna(fecha_inicio) and pd.notna(fecha_fin):
             metrics['DuracionRealDias'] = (fecha_fin - fecha_inicio).days
             
+            # Calcular RetrasoDias basado en duración planificada de hitos
+            hitos_proyecto = df_dict.get('hitos', pd.DataFrame())
+            if not hitos_proyecto.empty:
+                hitos_del_proyecto = hitos_proyecto[hitos_proyecto['ID_Proyecto'] == proyecto_id]
+                if not hitos_del_proyecto.empty:
+                    # Usar el rango de fechas planificadas de hitos como referencia
+                    fechas_planificadas = pd.to_datetime(hitos_del_proyecto['FechaFinPlanificada'], errors='coerce')
+                    fechas_reales = pd.to_datetime(hitos_del_proyecto['FechaFinReal'], errors='coerce')
+                    
+                    if fechas_planificadas.notna().any() and fechas_reales.notna().any():
+                        # Calcular la fecha fin planificada máxima de hitos
+                        fecha_fin_planificada_proyecto = fechas_planificadas.max()
+                        if pd.notna(fecha_fin_planificada_proyecto):
+                            duracion_planificada = (fecha_fin_planificada_proyecto - fecha_inicio).days
+                            metrics['RetrasoDias'] = max(0, metrics['DuracionRealDias'] - duracion_planificada)
+            
             # Mapear fechas a dim_tiempo
             if not dim_tiempo.empty:
                 dim_tiempo['Fecha_date'] = pd.to_datetime(dim_tiempo['Fecha']).dt.date
@@ -69,41 +86,67 @@ def calculate_project_metrics(proyecto_id: int, df_dict: Dict[str, pd.DataFrame]
         pass
     
     # === PRESUPUESTO Y COSTOS ===
-    # PresupuestoCliente desde contratos
-    if not contratos.empty and 'ID_Contrato' in proyecto:
-        contrato_data = contratos[contratos['ID_Contrato'] == proyecto['ID_Contrato']]
-        if not contrato_data.empty:
-            metrics['PresupuestoCliente'] = float(contrato_data['ValorTotalContrato'].iloc[0] or 0)
+    # PresupuestoCliente desde el proyecto directamente (ValorTotalContrato está duplicado aquí)
+    metrics['PresupuestoCliente'] = float(proyecto.get('ValorTotalContrato', 0) or 0)
     
-    # CosteReal desde proyectos
-    metrics['CosteReal'] = float(proyecto.get('costoReal', 0) or 0)
+    # CosteReal: CALCULAR sumando todos los gastos del proyecto
+    # (El generador de datos dejó todos los costos reales en 0, así que calculamos desde gastos)
+    gastos_proyecto = gastos[gastos['ID_Proyecto'] == proyecto_id] if not gastos.empty else pd.DataFrame()
+    if not gastos_proyecto.empty:
+        metrics['CosteReal'] = float(gastos_proyecto['Monto'].sum())
+    else:
+        metrics['CosteReal'] = 0.0
     
-    # DesviacionPresupuestal
-    metrics['DesviacionPresupuestal'] = metrics['CosteReal'] - metrics['PresupuestoCliente']
+    # DesviacionPresupuestal: CORREGIDO - Presupuesto menos Costo Real
+    # (positivo = ahorro, negativo = sobrecosto)
+    metrics['DesviacionPresupuestal'] = metrics['PresupuestoCliente'] - metrics['CosteReal']
     
-    # === FINANZAS (desde dim_finanzas para evitar consultas adicionales) ===
-    if not dim_finanzas.empty:
-        # Buscar el primer registro de finanzas para este proyecto
-        finanzas_proyecto = dim_finanzas.head(1)  # Simplificado para proyecto escolar
-        if not finanzas_proyecto.empty:
-            metrics['ID_Finanza'] = finanzas_proyecto['ID_Finanza'].iloc[0]
+    # === FINANZAS (usar tablas originales gastos y penalizaciones) ===
+    # ID_Finanza: usar el primer gasto del proyecto como referencia
+    gastos_proyecto = gastos[gastos['ID_Proyecto'] == proyecto_id] if not gastos.empty else pd.DataFrame()
+    if not gastos_proyecto.empty:
+        metrics['ID_Finanza'] = gastos_proyecto['ID_Gasto'].iloc[0]  # Primera transacción como referencia
+        
+        # PenalizacionesMonto: desde gastos del proyecto (case insensitive)
+        penalizaciones_gastos = gastos_proyecto[gastos_proyecto['TipoGasto'].str.lower().str.contains('penalizacion', na=False)]
+        monto_penalizaciones_gastos = penalizaciones_gastos['Monto'].sum() if not penalizaciones_gastos.empty else 0.0
+        
+        # También agregar penalizaciones directas por contrato del proyecto
+        proyecto_data = proyectos[proyectos['ID_Proyecto'] == proyecto_id]
+        if not proyecto_data.empty and not penalizaciones.empty:
+            id_contrato = proyecto_data['ID_Contrato'].iloc[0]
+            penalizaciones_contrato = penalizaciones[penalizaciones['ID_Contrato'] == id_contrato]
+            monto_penalizaciones_contrato = penalizaciones_contrato['Monto'].sum() if not penalizaciones_contrato.empty else 0.0
+        else:
+            monto_penalizaciones_contrato = 0.0
             
-            # PenalizacionesMonto desde dim_finanzas
-            penalizaciones = dim_finanzas[dim_finanzas['TipoGasto'] == 'Penalizacion']
-            metrics['PenalizacionesMonto'] = penalizaciones['Monto'].sum() if not penalizaciones.empty else 0.0
-            
-            # ProporcionCAPEX_OPEX desde dim_finanzas
-            capex_total = dim_finanzas[dim_finanzas['Categoria'] == 'CapEx']['Monto'].sum()
-            opex_total = dim_finanzas[dim_finanzas['Categoria'] == 'OpEx']['Monto'].sum()
-            
-            if opex_total > 0:
-                metrics['ProporcionCAPEX_OPEX'] = float(capex_total / opex_total)
+        metrics['PenalizacionesMonto'] = monto_penalizaciones_gastos + monto_penalizaciones_contrato
+        
+        # ProporcionCAPEX_OPEX desde gastos del proyecto
+        capex_total = gastos_proyecto[gastos_proyecto['Categoria'].str.upper() == 'CAPEX']['Monto'].sum()
+        opex_total = gastos_proyecto[gastos_proyecto['Categoria'].str.upper() == 'OPEX']['Monto'].sum()
+        
+        if opex_total > 0:
+            metrics['ProporcionCAPEX_OPEX'] = float(capex_total / opex_total)
+        elif capex_total > 0:
+            metrics['ProporcionCAPEX_OPEX'] = float('inf')  # Solo CAPEX
+        else:
+            metrics['ProporcionCAPEX_OPEX'] = 0.0
+    else:
+        # Si no hay gastos, buscar penalizaciones por contrato
+        proyecto_data = proyectos[proyectos['ID_Proyecto'] == proyecto_id]
+        if not proyecto_data.empty and not penalizaciones.empty:
+            id_contrato = proyecto_data['ID_Contrato'].iloc[0]
+            penalizaciones_contrato = penalizaciones[penalizaciones['ID_Contrato'] == id_contrato]
+            metrics['PenalizacionesMonto'] = penalizaciones_contrato['Monto'].sum() if not penalizaciones_contrato.empty else 0.0
     
-    # === RIESGOS ===
-    if not dim_riesgos.empty:
-        riesgo_proyecto = dim_riesgos.head(1)  # Simplificado
+    # === RIESGOS (usar tabla original riesgos) ===
+    if not riesgos.empty:
+        riesgo_proyecto = riesgos[riesgos['ID_Proyecto'] == proyecto_id]
         if not riesgo_proyecto.empty:
             metrics['ID_Riesgo'] = riesgo_proyecto['ID_Riesgo'].iloc[0]
+        else:
+            metrics['ID_Riesgo'] = 1  # Default si no hay riesgos específicos
     
     # === DEFECTOS ===
     errores = df_dict.get('errores', pd.DataFrame())

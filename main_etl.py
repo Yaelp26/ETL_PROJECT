@@ -89,7 +89,7 @@ def run_etl_complete(incremental: bool = True, include_load: bool = True):
     mode_msg = "INCREMENTAL" if incremental else "COMPLETA"
     phases_msg = "ETL COMPLETO" if include_load else "ET (Extract + Transform)"
     
-    logger.info(f"🚀 INICIANDO {phases_msg} - MODO {mode_msg}")
+    logger.info(f" INICIANDO {phases_msg} - MODO {mode_msg}")
     
     try:
         # Mostrar info de última extracción

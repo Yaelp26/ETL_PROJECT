@@ -30,8 +30,8 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
             return None
         try:
             fecha = pd.to_datetime(fecha_str)
-            # Generar ID basado en días desde 2020-01-01 (fecha base de dim_tiempo)
-            base_date = pd.to_datetime('2020-01-01')
+            # Generar ID basado en días desde 2019-01-01 (fecha base de dim_tiempo)
+            base_date = pd.to_datetime('2019-01-01')
             days_diff = (fecha - base_date).days + 1
             return max(1, days_diff) if days_diff > 0 else 1
         except:
