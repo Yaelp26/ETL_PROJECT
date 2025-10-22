@@ -32,6 +32,9 @@ from transform.transform_dim.dim_riesgos import transform as transform_dim_riesg
 from transform.transform_fact.hechos_asignaciones import transform as transform_hechos_asignaciones
 from transform.transform_fact.hechos_proyectos import transform as transform_hechos_proyectos
 
+# Import de carga
+from load.load_to_dw import load_all_to_dw
+
 # from load.load_to_dw import load_all  # Comentado hasta implementar
 
 def run_transformations(raw_data: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
@@ -75,9 +78,18 @@ def run_transformations(raw_data: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataF
     logger.info("=== TRANSFORMACIONES COMPLETADAS ===")
     return transformed_data
 
-def run_extract_transform(incremental: bool = True):
+def run_etl_complete(incremental: bool = True, include_load: bool = True):
+    """
+    Ejecuta el proceso ETL completo (Extract, Transform, Load)
+    
+    Args:
+        incremental: Si True, ejecuta extracción incremental
+        include_load: Si True, incluye la fase de carga al DW
+    """
     mode_msg = "INCREMENTAL" if incremental else "COMPLETA"
-    logger.info(f" INICIANDO ETL {mode_msg} - EXTRACCIÓN Y TRANSFORMACIÓN")
+    phases_msg = "ETL COMPLETO" if include_load else "ET (Extract + Transform)"
+    
+    logger.info(f"🚀 INICIANDO {phases_msg} - MODO {mode_msg}")
     
     try:
         # Mostrar info de última extracción
@@ -85,7 +97,7 @@ def run_extract_transform(incremental: bool = True):
             last_date = get_last_extraction_info()
             logger.info(f" Última extracción: {last_date}")
         
-        # 1. Extracción
+        # 1. EXTRACCIÓN
         logger.info(f" FASE 1: EXTRACCIÓN {mode_msg}")
         raw_data = extract_all(incremental=incremental)
         
@@ -93,16 +105,27 @@ def run_extract_transform(incremental: bool = True):
             logger.warning("No se extrajeron datos. Finalizando proceso.")
             return None
         
-        # 2. Transformación
+        # 2. TRANSFORMACIÓN
         logger.info(" FASE 2: TRANSFORMACIÓN")
         transformed_data = run_transformations(raw_data)
         
-        logger.info(f" ETL {mode_msg} (Extract + Transform) completado exitosamente")
-        return transformed_data
+        # 3. CARGA (opcional)
+        if include_load:
+            logger.info(" FASE 3: CARGA AL DATA WAREHOUSE")
+            load_results = load_all_to_dw(transformed_data)
+            logger.info(f" ETL COMPLETO (Extract + Transform + Load) completado exitosamente")
+            return transformed_data, load_results
+        else:
+            logger.info(f" ET {mode_msg} (Extract + Transform) completado exitosamente")
+            return transformed_data
         
     except Exception as e:
-        logger.error(f" Error en ETL {mode_msg}: {str(e)}")
+        logger.error(f" Error en {phases_msg} {mode_msg}: {str(e)}")
         raise
+
+def run_extract_transform(incremental: bool = True):
+    """Solo ejecuta Extract + Transform (sin Load)"""
+    return run_etl_complete(incremental=incremental, include_load=False)
 
 def run_etl():
     """
@@ -128,17 +151,27 @@ def run_etl():
         logger.error(f" Error en ETL completo: {str(e)}")
         raise
 
-def test_etl():
+def test_etl(include_load: bool = False):
     """
     Función de prueba del ETL
+    
+    Args:
+        include_load: Si True, ejecuta ETL completo con carga al DW
     """
-    print(" EJECUTANDO PRUEBA DE ETL")
+    test_type = "ETL COMPLETO (con carga)" if include_load else "ETL (solo Extract + Transform)"
+    print(f" EJECUTANDO PRUEBA DE {test_type}")
+    
     try:
-        result = run_extract_transform()
+        if include_load:
+            result = run_etl_complete(include_load=True)
+            transformed_data, load_results = result if result else (None, None)
+        else:
+            transformed_data = run_extract_transform()
+            load_results = None
         
-        if result:
-            print("\n📊 RESULTADOS DE LA PRUEBA:")
-            for table_name, df in result.items():
+        if transformed_data:
+            print("\n RESULTADOS DE LA PRUEBA:")
+            for table_name, df in transformed_data.items():
                 print(f"\n--- {table_name.upper()} ---")
                 print(f"Registros: {len(df)}")
                 if len(df) > 0:
@@ -146,28 +179,40 @@ def test_etl():
                     print(df.head(3))
                 else:
                     print("No hay datos")
+            
+            if load_results:
+                print(f"\n RESULTADOS DE CARGA AL DW:")
+                for table_name, count in load_results.items():
+                    status = "ok" if count > 0 else "warning"
+                    print(f"{status} {table_name}: {count:,} registros cargados")
         
-        print("\n Prueba completada exitosamente")
-        return result
+        print(f"\n Prueba completada exitosamente")
+        return transformed_data, load_results if include_load else transformed_data
         
     except Exception as e:
-        print(f"\n Error en prueba: {str(e)}")
+        print(f"\n❌ Error en prueba: {str(e)}")
         return None
 
-def run_full_load():
+def run_full_load(include_load: bool = False):
     """
     Ejecutar carga completa (no incremental)
+    
+    Args:
+        include_load: Si True, incluye carga al DW
     """
-    logger.info("🔄 FORZANDO CARGA COMPLETA")
-    return run_extract_transform(incremental=False)
+    logger.info("FORZANDO CARGA COMPLETA")
+    return run_etl_complete(incremental=False, include_load=include_load)
 
-def reset_and_run():
+def reset_and_run(include_load: bool = False):
     """
     Resetear control incremental y ejecutar carga completa
+    
+    Args:
+        include_load: Si True, incluye carga al DW
     """
     logger.info(" RESETEANDO CONTROL INCREMENTAL")
     reset_incremental_control()
-    return run_full_load()
+    return run_full_load(include_load=include_load)
 
 def show_incremental_status():
     """
@@ -183,15 +228,30 @@ if __name__ == "__main__":
     
     if len(sys.argv) > 1:
         if sys.argv[1] == "--full":
-            print("Ejecutando carga completa...")
-            run_full_load()
+            print("Ejecutando carga completa (Extract + Transform)...")
+            run_full_load(include_load=False)
+        elif sys.argv[1] == "--full-load":
+            print("Ejecutando ETL COMPLETO con carga al DW...")
+            run_full_load(include_load=True)
         elif sys.argv[1] == "--reset":
             print("Reseteando control y ejecutando carga completa...")
-            reset_and_run()
+            reset_and_run(include_load=False)
+        elif sys.argv[1] == "--reset-load":
+            print("Reseteando control y ejecutando ETL COMPLETO con carga al DW...")
+            reset_and_run(include_load=True)
+        elif sys.argv[1] == "--test-load":
+            print("Ejecutando prueba ETL COMPLETO con carga al DW...")
+            test_etl(include_load=True)
         elif sys.argv[1] == "--status":
             show_incremental_status()
         else:
-            print("Opciones: --full, --reset, --status")
+            print("Opciones disponibles:")
+            print("  --full        : Carga completa (solo Extract + Transform)")
+            print("  --full-load   : ETL completo con carga al DW")
+            print("  --reset       : Reset + carga completa")
+            print("  --reset-load  : Reset + ETL completo con carga al DW")
+            print("  --test-load   : Prueba ETL completo con carga")
+            print("  --status      : Mostrar estado incremental")
     else:
-        # Ejecución normal (incremental)
-        test_etl()
+        # Ejecución normal (incremental, solo Extract + Transform)
+        test_etl(include_load=False)

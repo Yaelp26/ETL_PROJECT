@@ -15,21 +15,6 @@ def get_dependencies():
     return ['hitos', 'proyectos']
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """
-    Transformación para dim_hitos
-    
-    Input: df_dict con:
-        - 'hitos': DataFrame de hitos del SGP con FechaInicio, FechaFinPlanificada, FechaFinReal
-        - 'proyectos': DataFrame de proyectos (para validación)
-    
-    Output: DataFrame con esquema DW:
-        - ID_Hito: PK temporal para el DW  
-        - CodigoHito: ID original del SGP
-        - ID_Proyecto: FK hacia dim_proyectos
-        - ID_FechaInicio: FK hacia dim_tiempo (basado en FechaInicio)
-        - ID_FechaFinalizacion: FK hacia dim_tiempo (basado en FechaFinReal)
-        - Retraso_days: Diferencia entre FechaFinReal - FechaFinPlanificada
-    """
     hitos = ensure_df(df_dict.get('hitos', pd.DataFrame()))
     
     if hitos.empty:
@@ -75,6 +60,9 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
 
     # Seleccionar columnas finales para el DW
     result = df[['ID_Hito','CodigoHito','ID_Proyecto','ID_FechaInicio','ID_FechaFinalizacion','Retraso_days']].copy()
+    
+    # Renombrar la columna para que coincida con el esquema del DW
+    result = result.rename(columns={'ID_Proyecto': 'ID_proyectos'})
     
     log_transform_info('dim_hitos', len(hitos), len(result))
     return result
