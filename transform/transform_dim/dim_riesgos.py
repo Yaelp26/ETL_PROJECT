@@ -1,6 +1,3 @@
-"""
-Transformación dim_riesgos - Proyecto Escolar ETL
-"""
 import pandas as pd
 import logging
 from typing import Dict
@@ -51,19 +48,3 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     
     log_transform_info('dim_riesgos', len(riesgos), len(result))
     return result
-
-def test_transform():
-    sample_data = {
-        'riesgos': pd.DataFrame({
-            'ID_Riesgo': [1, 2, 3, 4],
-            'TipoRiesgo': ['Técnico', 'Operativo', 'Financiero', 'Técnico'],
-            'Severidad': ['Alta', 'Media', 'Crítica', 'Baja']
-        })
-    }
-    result = transform(sample_data)
-    print("Test dim_riesgos:")
-    print(result)
-    return result
-
-if __name__ == "__main__":
-    test_transform()
