@@ -1,6 +1,3 @@
-"""
-Transformación dim_proyectos - Proyecto Escolar ETL
-"""
 import pandas as pd
 import logging
 from typing import Dict
@@ -15,11 +12,11 @@ from transform.common import ensure_df, log_transform_info
 logger = logging.getLogger(__name__)
 
 def get_dependencies():
-    return ['proyectos', 'contratos']
+    return ['proyectos', 'contratos', 'clientes']  # Agregar clientes para validar FK
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Transformación para dim_proyectos"""
     proyectos = ensure_df(df_dict.get('proyectos', pd.DataFrame()))
+    clientes = ensure_df(df_dict.get('clientes', pd.DataFrame()))
     
     if proyectos.empty:
         logger.warning('dim_proyectos: No hay datos de proyectos')
@@ -36,24 +33,14 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     
     # Limpiar versión
     df['Version'] = df['Version'].fillna('1.0').astype(str).str.strip()
+    
+    # Validar que ID_Cliente existe en dim_clientes (opcional para proyecto escolar)
+    if not clientes.empty:
+        clientes_validos = set(clientes['ID_Cliente'].unique())
+        df = df[df['ID_Cliente'].isin(clientes_validos)]
+        if len(df) < len(proyectos):
+            logger.info(f'dim_proyectos: Filtrados {len(proyectos) - len(df)} proyectos con clientes inexistentes')
 
-    result = df[['ID_Proyecto','CodigoProyecto','Version','Cancelado','ID_Cliente']]
+    result = df[['ID_Proyecto','CodigoProyecto','Version','Cancelado','ID_Cliente']].copy()
     log_transform_info('dim_proyectos', len(proyectos), len(result))
     return result
-
-def test_transform():
-    sample_data = {
-        'proyectos': pd.DataFrame({
-            'ID_Proyecto': [1, 2, 3],
-            'ID_Cliente': [1, 1, 2],
-            'Version': ['1.0', '2.1', None],
-            'EstadoProyecto': ['Terminado', 'Cancelado', 'Terminado']
-        })
-    }
-    result = transform(sample_data)
-    print("Test dim_proyectos:")
-    print(result)
-    return result
-
-if __name__ == "__main__":
-    test_transform()
