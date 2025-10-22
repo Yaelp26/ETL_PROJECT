@@ -35,15 +35,6 @@ from transform.transform_fact.hechos_proyectos import transform as transform_hec
 # from load.load_to_dw import load_all  # Comentado hasta implementar
 
 def run_transformations(raw_data: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataFrame]:
-    """
-    Ejecuta todas las transformaciones disponibles
-    
-    Args:
-        raw_data: Diccionario con DataFrames extraídos del SGP
-        
-    Returns:
-        Dict con datos transformados listos para cargar al DW
-    """
     transformed_data = {}
     
     logger.info("=== INICIANDO TRANSFORMACIONES ===")
@@ -52,27 +43,25 @@ def run_transformations(raw_data: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataF
     logger.info("--- Transformando Dimensiones ---")
     
     try:
-        # Dimensiones básicas
+        # Dimensiones
         transformed_data['dim_clientes'] = transform_dim_clientes(raw_data)
         transformed_data['dim_empleados'] = transform_dim_empleados(raw_data)
         transformed_data['dim_proyectos'] = transform_dim_proyectos(raw_data)
         transformed_data['dim_tiempo'] = transform_dim_tiempo(raw_data)
-        
-        # Dimensiones de proceso
         transformed_data['dim_hitos'] = transform_dim_hitos(raw_data)
         transformed_data['dim_tareas'] = transform_dim_tareas(raw_data)
         transformed_data['dim_pruebas'] = transform_dim_pruebas(raw_data)
-        
-        # Dimensiones auxiliares
         transformed_data['dim_finanzas'] = transform_dim_finanzas(raw_data)
         transformed_data['dim_tipo_riesgo'] = transform_dim_tipo_riesgo(raw_data)
         transformed_data['dim_severidad'] = transform_dim_severidad(raw_data)
         transformed_data['dim_riesgos'] = transform_dim_riesgos(raw_data)
         
-        # Transformar hechos
+        # Transformar hechos (necesitan tanto datos crudos como dimensiones)
         logger.info("--- Transformando Hechos ---")
-        transformed_data['hechos_asignaciones'] = transform_hechos_asignaciones(raw_data)
-        transformed_data['hechos_proyectos'] = transform_hechos_proyectos(raw_data)
+        # Combinar datos crudos con dimensiones transformadas para los hechos
+        combined_data = {**raw_data, **transformed_data}
+        transformed_data['hechos_asignaciones'] = transform_hechos_asignaciones(combined_data)
+        transformed_data['hechos_proyectos'] = transform_hechos_proyectos(combined_data)
         
         # Resumen de transformación
         logger.info("--- Resumen de Transformaciones ---")
@@ -87,23 +76,17 @@ def run_transformations(raw_data: Dict[str, pd.DataFrame]) -> Dict[str, pd.DataF
     return transformed_data
 
 def run_extract_transform(incremental: bool = True):
-    """
-    Ejecuta solo extracción y transformación (para pruebas)
-    
-    Args:
-        incremental: Si True, carga incremental. Si False, carga completa
-    """
     mode_msg = "INCREMENTAL" if incremental else "COMPLETA"
-    logger.info(f"🚀 INICIANDO ETL {mode_msg} - EXTRACCIÓN Y TRANSFORMACIÓN")
+    logger.info(f" INICIANDO ETL {mode_msg} - EXTRACCIÓN Y TRANSFORMACIÓN")
     
     try:
         # Mostrar info de última extracción
         if incremental:
             last_date = get_last_extraction_info()
-            logger.info(f"📅 Última extracción: {last_date}")
+            logger.info(f" Última extracción: {last_date}")
         
         # 1. Extracción
-        logger.info(f"📤 FASE 1: EXTRACCIÓN {mode_msg}")
+        logger.info(f" FASE 1: EXTRACCIÓN {mode_msg}")
         raw_data = extract_all(incremental=incremental)
         
         if not raw_data:
@@ -111,21 +94,21 @@ def run_extract_transform(incremental: bool = True):
             return None
         
         # 2. Transformación
-        logger.info("🔄 FASE 2: TRANSFORMACIÓN")
+        logger.info(" FASE 2: TRANSFORMACIÓN")
         transformed_data = run_transformations(raw_data)
         
-        logger.info(f"✅ ETL {mode_msg} (Extract + Transform) completado exitosamente")
+        logger.info(f" ETL {mode_msg} (Extract + Transform) completado exitosamente")
         return transformed_data
         
     except Exception as e:
-        logger.error(f"❌ Error en ETL {mode_msg}: {str(e)}")
+        logger.error(f" Error en ETL {mode_msg}: {str(e)}")
         raise
 
 def run_etl():
     """
     Ejecuta el proceso ETL completo
     """
-    logger.info("🚀 INICIANDO ETL COMPLETO")
+    logger.info(" INICIANDO ETL COMPLETO")
     
     try:
         # Extraer y transformar
@@ -135,21 +118,21 @@ def run_etl():
             return
         
         # 3. Carga (por implementar)
-        logger.info("📥 FASE 3: CARGA")
+        logger.info(" FASE 3: CARGA")
         logger.warning("Módulo de carga aún no implementado")
         # load_all(transformed_data)
         
-        logger.info("✅ ETL completo finalizado")
+        logger.info(" ETL completo finalizado")
         
     except Exception as e:
-        logger.error(f"❌ Error en ETL completo: {str(e)}")
+        logger.error(f" Error en ETL completo: {str(e)}")
         raise
 
 def test_etl():
     """
     Función de prueba del ETL
     """
-    print("🧪 EJECUTANDO PRUEBA DE ETL")
+    print(" EJECUTANDO PRUEBA DE ETL")
     try:
         result = run_extract_transform()
         
@@ -164,11 +147,11 @@ def test_etl():
                 else:
                     print("No hay datos")
         
-        print("\n✅ Prueba completada exitosamente")
+        print("\n Prueba completada exitosamente")
         return result
         
     except Exception as e:
-        print(f"\n❌ Error en prueba: {str(e)}")
+        print(f"\n Error en prueba: {str(e)}")
         return None
 
 def run_full_load():
@@ -182,7 +165,7 @@ def reset_and_run():
     """
     Resetear control incremental y ejecutar carga completa
     """
-    logger.info("🔄 RESETEANDO CONTROL INCREMENTAL")
+    logger.info(" RESETEANDO CONTROL INCREMENTAL")
     reset_incremental_control()
     return run_full_load()
 
@@ -191,19 +174,19 @@ def show_incremental_status():
     Mostrar estado del control incremental
     """
     last_date = get_last_extraction_info()
-    print(f"📅 Última extracción: {last_date}")
-    print(f"🔄 Próxima extracción será: INCREMENTAL (solo cambios desde {last_date})")
-    print("💡 Para carga completa usar: reset_and_run() o run_full_load()")
+    print(f" Última extracción: {last_date}")
+    print(f" Próxima extracción será: INCREMENTAL (solo cambios desde {last_date})")
+    print(" Para carga completa usar: reset_and_run() o run_full_load()")
 
 if __name__ == "__main__":
     import sys
     
     if len(sys.argv) > 1:
         if sys.argv[1] == "--full":
-            print("🚀 Ejecutando carga completa...")
+            print("Ejecutando carga completa...")
             run_full_load()
         elif sys.argv[1] == "--reset":
-            print("🔄 Reseteando control y ejecutando carga completa...")
+            print("Reseteando control y ejecutando carga completa...")
             reset_and_run()
         elif sys.argv[1] == "--status":
             show_incremental_status()

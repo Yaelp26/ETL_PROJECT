@@ -38,7 +38,6 @@ def create_subdimensions():
     return dias_semana, meses, anios
 
 def extract_dates_from_data(df_dict: Dict[str, pd.DataFrame]) -> list:
-    """Extrae todas las fechas únicas de los datos"""
     fechas = set()
     
     # Proyectos
@@ -75,7 +74,6 @@ def extract_dates_from_data(df_dict: Dict[str, pd.DataFrame]) -> list:
     return sorted(list(set(fechas_validas)))
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    """Transformación para dim_tiempo"""
     
     # Extraer fechas de los datos
     fechas_encontradas = extract_dates_from_data(df_dict)

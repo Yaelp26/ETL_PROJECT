@@ -12,7 +12,7 @@ from transform.common import ensure_df, log_transform_info
 logger = logging.getLogger(__name__)
 
 def get_dependencies():
-    return ['proyectos', 'contratos', 'errores', 'asignaciones', 'hitos', 'tareas', 'dim_tiempo', 'dim_riesgos', 'dim_finanzas']
+    return ['proyectos', 'contratos', 'errores', 'asignaciones', 'hitos', 'tareas', 'dim_tiempo', 'dim_riesgos', 'dim_finanzas', 'dim_proyectos']
 
 def calculate_project_metrics(proyecto_id: int, df_dict: Dict[str, pd.DataFrame]) -> Dict: 
     # Obtener datos principales
@@ -159,10 +159,12 @@ def calculate_project_metrics(proyecto_id: int, df_dict: Dict[str, pd.DataFrame]
     return metrics
 
 def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-    proyectos = ensure_df(df_dict.get('proyectos', pd.DataFrame()))
+    # Usar dim_proyectos para garantizar integridad referencial
+    dim_proyectos = ensure_df(df_dict.get('dim_proyectos', pd.DataFrame()))
+    proyectos = ensure_df(df_dict.get('proyectos', pd.DataFrame()))  # Para datos adicionales
     
-    if proyectos.empty:
-        logger.warning('hechos_proyectos: No hay datos de proyectos')
+    if dim_proyectos.empty:
+        logger.warning('hechos_proyectos: No hay datos de dim_proyectos')
         return pd.DataFrame(columns=[
             'ID_Hecho', 'ID_Proyecto', 'ID_TiempoInicio', 'ID_TiempoFinalizacion',
             'ID_Riesgo', 'ID_Finanza', 'DuracionRealDias', 'RetrasoDias',
@@ -171,11 +173,13 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
             'ProductividadPromedio', 'PorcentajeTareasRetrasadas', 'PorcentajeHitosRetrasados'
         ])
     
-    # Calcular métricas para cada proyecto
+    # Calcular métricas SOLO para proyectos válidos de dim_proyectos
     hechos_data = []
     hecho_id = 1
     
-    for proyecto_id in proyectos['ID_Proyecto'].unique():
+    logger.info(f'hechos_proyectos: Procesando {len(dim_proyectos)} proyectos válidos de dim_proyectos')
+    
+    for proyecto_id in dim_proyectos['ID_Proyecto'].unique():
         metrics = calculate_project_metrics(proyecto_id, df_dict)
         if metrics:  # Solo agregar si se calcularon las métricas
             metrics['ID_Hecho'] = hecho_id

@@ -41,10 +41,6 @@ def transform(df_dict: Dict[str, pd.DataFrame]) -> pd.DataFrame:
     
     # Función para convertir fecha a ID de dim_tiempo
     def fecha_to_tiempo_id(fecha_str):
-        """
-        Convierte fecha a ID de dim_tiempo
-        dim_tiempo tiene estructura: ID_Tiempo, Fecha, ID_DiaSemana, ID_Mes, ID_Anio
-        """
         if pd.isna(fecha_str) or str(fecha_str) == 'None':
             return None
         try:
