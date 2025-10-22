@@ -1,10 +1,12 @@
 """
-Módulo de extracción desde el Sistema de Gestión de Proyectos (SGP)
+Módulo de extracción de datos del Sistema de Gestión de Proyectos (SGP)
 
 REGLAS DE NEGOCIO:
 1. SOLO se extraen datos de proyectos con Estado = 'Cerrado' OR 'Cancelado'
 2. O de contratos con Estado = 'Cerrado' OR 'Cancelado'  
 3. CARGA INCREMENTAL: Solo registros nuevos desde última extracción
+4. Esta regla se aplica en cascada a todas las tablas relacionadas
+
 """
 
 import mysql.connector
@@ -27,7 +29,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 class SGPExtractor:
-    """Clase para extraer datos del Sistema de Gestión de Proyectos"""
     
     def __init__(self, incremental: bool = True):
         self.connection = None
@@ -135,11 +136,7 @@ class SGPExtractor:
                 WHEN c.Estado IN ('Cerrado', 'Cancelado') THEN 'Por contrato'
                 ELSE 'No aplica'
             END as razon_inclusion,
-            CURRENT_TIMESTAMP as fecha_extraccion,
-            GREATEST(
-                IFNULL(p.fecha_modificacion, p.fecha_creacion),
-                IFNULL(c.fecha_modificacion, c.fecha_creacion)
-            ) as ultima_modificacion
+            CURRENT_TIMESTAMP as fecha_extraccion
         FROM proyectos p
         INNER JOIN contratos c ON p.ID_Contrato = c.ID_Contrato
         WHERE (p.Estado IN ('Cerrado', 'Cancelado') 
